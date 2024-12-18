@@ -20,11 +20,14 @@ struct ContentView: View {
     @State private var showCheckInSuccess = false
     @State private var selectedPhotoData: Data?
     @State private var showingImagePicker = false
+    @State private var showFullScreenImage = false
+    @State private var checkInScale: CGFloat = 1.0
+    @State private var isRefreshing = false
     
     @FetchRequest(
         entity: CheckInRecord.entity(),
         sortDescriptors: [NSSortDescriptor(keyPath: \CheckInRecord.timestamp, ascending: false)],
-        animation: .default)
+        animation: .spring(response: 0.3))
     private var checkInRecords: FetchedResults<CheckInRecord>
 
     var body: some View {
@@ -36,6 +39,13 @@ struct ContentView: View {
                         CheckInDetailView(record: record)
                     } label: {
                         CheckInRowView(record: record)
+                            .contentTransition(.opacity)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(UIColor.secondarySystemBackground))
+                                    .padding(.vertical, 4)
+                            )
                     }
                 }
             }
@@ -52,28 +62,79 @@ struct ContentView: View {
                                 .foregroundColor(.secondary)
                             Spacer()
                             Button(action: {
-                                locationManager.refreshLocation()
+                                withAnimation {
+                                    isRefreshing = true
+                                    locationManager.refreshLocation()
+                                }
                             }) {
                                 Image(systemName: "arrow.clockwise")
+                                    .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                                    .animation(
+                                        isRefreshing ? 
+                                            .linear(duration: 1)
+                                            .repeatForever(autoreverses: false) : 
+                                            .default,
+                                        value: isRefreshing
+                                    )
                             }
                         }
                     } else if let location = locationManager.location {
-                        LabeledContent("经纬度") {
-                            Text("\(location.coordinate.latitude), \(location.coordinate.longitude)")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        if let placemark = locationManager.placemark {
-                            LabeledContent("地点") {
-                                Text(placemark.name ?? "未知位置")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                        VStack {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    LabeledContent("经纬度") {
+                                        Text("\(location.coordinate.latitude), \(location.coordinate.longitude)")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    if let placemark = locationManager.placemark {
+                                        LabeledContent("地点") {
+                                            Text(placemark.name ?? "未知位置")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    withAnimation {
+                                        isRefreshing = true
+                                        locationManager.refreshLocation()
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.blue)
+                                        .padding(8)
+                                        .background(Color(UIColor.systemBackground))
+                                        .clipShape(Circle())
+                                        .shadow(radius: 2)
+                                        .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                                        .animation(
+                                            isRefreshing ? 
+                                                .linear(duration: 1)
+                                                .repeatForever(autoreverses: false) : 
+                                                .default,
+                                            value: isRefreshing
+                                        )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 } header: {
                     Text("当前位置")
+                }
+                .onChange(of: locationManager.location) { oldValue, newValue in
+                    if newValue != nil {
+                        withAnimation {
+                            isRefreshing = false
+                        }
+                    }
                 }
                 
                 Section {
@@ -85,36 +146,50 @@ struct ContentView: View {
                                 .scaledToFill()
                                 .frame(height: 200)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .shadow(radius: 2)
                                 .overlay(
                                     Button(action: {
-                                        selectedPhotoData = nil
+                                        withAnimation(.spring(response: 0.3)) {
+                                            selectedPhotoData = nil
+                                        }
                                     }) {
                                         Image(systemName: "xmark.circle.fill")
+                                            .font(.title2)
                                             .foregroundColor(.white)
-                                            .background(Circle().fill(Color.black.opacity(0.5)))
+                                            .shadow(radius: 2)
                                     }
                                     .padding(8),
                                     alignment: .topTrailing
                                 )
+                                .onTapGesture {
+                                    showFullScreenImage = true
+                                }
+                                .transition(.scale.combined(with: .opacity))
                         } else {
                             Button(action: {
                                 showingImagePicker = true
                             }) {
                                 VStack {
                                     Image(systemName: "photo.on.rectangle")
-                                        .font(.largeTitle)
+                                        .font(.system(size: 40))
                                         .foregroundColor(.secondary)
                                     Text("从相册选择")
-                                        .font(.caption)
+                                        .font(.callout)
                                         .foregroundColor(.secondary)
                                 }
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 100)
-                                .background(Color(UIColor.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .frame(height: 120)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 2)
+                                        .background(Color(UIColor.secondarySystemBackground))
+                                )
                             }
+                            .buttonStyle(.plain)
+                            .transition(.scale.combined(with: .opacity))
                         }
                     }
+                    .animation(.spring(response: 0.3), value: selectedPhotoData)
                 } header: {
                     Text("照片")
                 }
@@ -143,6 +218,7 @@ struct ContentView: View {
                         isNotesFocused = false
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                             isCheckingIn = true
+                            checkInScale = 0.95
                         }
                         performCheckIn()
                     }) {
@@ -169,7 +245,7 @@ struct ContentView: View {
                     )
                     .foregroundColor(.white)
                     .disabled(locationManager.location == nil || isCheckingIn)
-                    .scaleEffect(isCheckingIn ? 0.95 : 1.0)
+                    .scaleEffect(checkInScale)
                 }
             }
             .listStyle(.insetGrouped)
@@ -181,16 +257,40 @@ struct ContentView: View {
             }
             .onChange(of: showCheckInSuccess) { oldValue, newValue in
                 if newValue {
-                    // 2秒后重���按钮状态
+                    // 2秒后重置按钮状态
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                         withAnimation {
                             showCheckInSuccess = false
+                            checkInScale = 1.0
                         }
                     }
                 }
             }
             .sheet(isPresented: $showingImagePicker) {
                 ImagePicker(selectedImage: $selectedPhotoData, sourceType: .photoLibrary)
+            }
+            .fullScreenCover(isPresented: $showFullScreenImage) {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    if let imageData = selectedPhotoData, let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            .transition(.opacity)
+                    }
+                    
+                    Button(action: {
+                        withAnimation {
+                            showFullScreenImage = false
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -200,6 +300,7 @@ struct ContentView: View {
         guard let location = locationManager.location else {
             showingLocationError = true
             isCheckingIn = false
+            checkInScale = 1.0
             return
         }
         
@@ -214,18 +315,27 @@ struct ContentView: View {
             
             do {
                 try viewContext.save()
-                notes = "" // 清空备注
-                selectedPhotoData = nil // 清空照片
                 
-                // 显示成��动画
+                // 添加成功动画序列
                 withAnimation(.spring(response: 0.3)) {
                     isCheckingIn = false
                     showCheckInSuccess = true
                 }
+                
+                // 添加成功反馈
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                
+                // 清空表单动画
+                withAnimation(.easeInOut(duration: 0.3).delay(0.5)) {
+                    notes = ""
+                    selectedPhotoData = nil
+                }
+                
             } catch {
                 let nsError = error as NSError
                 print("签到保存失败: \(nsError)")
                 isCheckingIn = false
+                checkInScale = 1.0
             }
         }
     }
@@ -278,11 +388,20 @@ struct LocationStatusCard: View {
 struct CheckInRowView: View {
     let record: CheckInRecord
     
+    private var formattedDate: String {
+        if let timestamp = record.timestamp {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy年MM月dd日 HH:mm"
+            return formatter.string(from: timestamp)
+        }
+        return "未知时间"
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(record.locationName ?? "未知位置")
                 .font(.headline)
-            Text(record.timestamp ?? Date(), style: .date)
+            Text(formattedDate)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
         }
@@ -296,6 +415,15 @@ struct CheckInDetailView: View {
     let record: CheckInRecord
     @State private var showingDeleteAlert = false
     @State private var showingSaveSuccess = false
+    
+    private var formattedDate: String {
+        if let timestamp = record.timestamp {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy年MM月dd日 HH:mm"
+            return formatter.string(from: timestamp)
+        }
+        return "未知时间"
+    }
     
     var body: some View {
         List {
@@ -315,7 +443,7 @@ struct CheckInDetailView: View {
             }
             
             Section("时间") {
-                Text(record.timestamp ?? Date(), style: .date)
+                Text(formattedDate)
             }
             
             if let notes = record.notes, !notes.isEmpty {
@@ -340,6 +468,15 @@ struct CheckInDetailView: View {
                     HStack {
                         Image(systemName: "square.and.arrow.down")
                         Text("保存为图片")
+                    }
+                }
+                
+                Button {
+                    dismiss()
+                } label: {
+                    HStack {
+                        Image(systemName: "chevron.left")
+                        Text("返回上一页")
                     }
                 }
             }
@@ -369,7 +506,7 @@ struct CheckInDetailView: View {
                     .font(.largeTitle)
                     .bold()
                 
-                Text(record.timestamp ?? Date(), style: .date)
+                Text(formattedDate)
                     .font(.title3)
                     .foregroundColor(.secondary)
             }
@@ -389,7 +526,7 @@ struct CheckInDetailView: View {
                         .font(.headline)
                     
                     Text("地点：\(record.locationName ?? "未知位置")")
-                    Text("经度：\(String(format: "%.6f", record.longitude))")
+                    Text("度：\(String(format: "%.6f", record.longitude))")
                     Text("纬度：\(String(format: "%.6f", record.latitude))")
                 }
                 
