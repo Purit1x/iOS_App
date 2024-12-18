@@ -15,9 +15,9 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>需要访问您的位置以记录签到地点</string>
+	<string>需要访问您的位置以记录打卡地点</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>需要访问您的相册以选择签到照片</string>
+	<string>需要访问您的相册以选择打卡照片</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

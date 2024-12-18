@@ -18,7 +18,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     private func configureWindowScene(_ windowScene: UIWindowScene) {
         // 设置窗口标题
-        windowScene.title = "签到记录"
+        windowScene.title = "打卡记录"
         
         // 配置窗口行为
         if windowScene.session.role == .windowApplication {

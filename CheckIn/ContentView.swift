@@ -18,11 +18,14 @@ struct ContentView: View {
     @FocusState private var isNotesFocused: Bool
     @State private var isCheckingIn = false
     @State private var showCheckInSuccess = false
-    @State private var selectedPhotoData: Data?
+    @State private var selectedPhotosData: [Data] = []
     @State private var showingImagePicker = false
     @State private var showFullScreenImage = false
     @State private var checkInScale: CGFloat = 1.0
     @State private var isRefreshing = false
+    @State private var selectedImageIndex: Int = 0
+    
+    private let maxPhotos = 9
     
     @FetchRequest(
         entity: CheckInRecord.entity(),
@@ -32,7 +35,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            // 侧边栏：签到历史
+            // 侧边栏：打卡历史
             List {
                 ForEach(checkInRecords) { record in
                     NavigationLink {
@@ -49,13 +52,13 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("签到历史")
+            .navigationTitle("打卡历史")
             .listStyle(.insetGrouped)
         } detail: {
-            // 主要内容：签到界面
+            // 主要内容：打卡界面
             List {
                 Section {
-                    // 位置信息
+                    // ���信息
                     if locationManager.location == nil {
                         HStack {
                             Text("正在获取位置...")
@@ -138,60 +141,24 @@ struct ContentView: View {
                 }
                 
                 Section {
-                    // 照片选择区域
-                    HStack {
-                        if let imageData = selectedPhotoData, let uiImage = UIImage(data: imageData) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(height: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .shadow(radius: 2)
-                                .overlay(
-                                    Button(action: {
-                                        withAnimation(.spring(response: 0.3)) {
-                                            selectedPhotoData = nil
-                                        }
-                                    }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.title2)
-                                            .foregroundColor(.white)
-                                            .shadow(radius: 2)
-                                    }
-                                    .padding(8),
-                                    alignment: .topTrailing
-                                )
-                                .onTapGesture {
-                                    showFullScreenImage = true
-                                }
-                                .transition(.scale.combined(with: .opacity))
-                        } else {
-                            Button(action: {
-                                showingImagePicker = true
-                            }) {
-                                VStack {
-                                    Image(systemName: "photo.on.rectangle")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.secondary)
-                                    Text("从相册选择")
-                                        .font(.callout)
-                                        .foregroundColor(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 120)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 2)
-                                        .background(Color(UIColor.secondarySystemBackground))
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .transition(.scale.combined(with: .opacity))
+                    PhotoGridView(
+                        selectedPhotosData: selectedPhotosData,
+                        maxPhotos: maxPhotos,
+                        onDelete: { index in
+                            selectedPhotosData.remove(at: index)
+                        },
+                        onAdd: {
+                            showingImagePicker = true
+                        },
+                        onTap: { index in
+                            selectedImageIndex = index
+                            showFullScreenImage = true
                         }
-                    }
-                    .animation(.spring(response: 0.3), value: selectedPhotoData)
+                    )
                 } header: {
                     Text("照片")
+                } footer: {
+                    Text("最多可添加\(maxPhotos)张照片")
                 }
                 
                 Section {
@@ -213,7 +180,7 @@ struct ContentView: View {
                 }
                 
                 Section {
-                    // 签到按钮
+                    // 打卡按钮
                     Button(action: {
                         isNotesFocused = false
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -229,7 +196,7 @@ struct ContentView: View {
                                     .imageScale(.large)
                                     .transition(.scale.combined(with: .opacity))
                             }
-                            Text(showCheckInSuccess ? "签到成功" : "签到")
+                            Text(showCheckInSuccess ? "打卡成功" : "打卡")
                                 .bold()
                             Spacer()
                         }
@@ -249,7 +216,7 @@ struct ContentView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("签到")
+            .navigationTitle("打卡")
             .alert("位置服务错误", isPresented: $showingLocationError) {
                 Button("确定", role: .cancel) { }
             } message: {
@@ -267,30 +234,27 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingImagePicker) {
-                ImagePicker(selectedImage: $selectedPhotoData, sourceType: .photoLibrary)
+                ImagePicker(selectedImage: Binding(
+                    get: { nil },
+                    set: { newValue in
+                        if let imageData = newValue {
+                            withAnimation {
+                                selectedPhotosData.append(imageData)
+                            }
+                        }
+                    }
+                ), sourceType: .photoLibrary)
             }
             .fullScreenCover(isPresented: $showFullScreenImage) {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    if let imageData = selectedPhotoData, let uiImage = UIImage(data: imageData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFit()
-                            .transition(.opacity)
-                    }
-                    
-                    Button(action: {
+                PhotoPreviewView(
+                    selectedPhotosData: selectedPhotosData,
+                    selectedImageIndex: $selectedImageIndex,
+                    onDismiss: {
                         withAnimation {
                             showFullScreenImage = false
                         }
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title)
-                            .foregroundColor(.white)
                     }
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                }
+                )
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -311,29 +275,43 @@ struct ContentView: View {
             newRecord.longitude = location.coordinate.longitude
             newRecord.notes = notes
             newRecord.locationName = locationManager.placemark?.name ?? "未知位置"
-            newRecord.photo = selectedPhotoData
+            
+            if !selectedPhotosData.isEmpty {
+                do {
+                    let combinedData = NSMutableData()
+                    var count = UInt32(selectedPhotosData.count)
+                    combinedData.append(&count, length: 4)
+                    
+                    for photoData in selectedPhotosData {
+                        var length = UInt32(photoData.count)
+                        combinedData.append(&length, length: 4)
+                        combinedData.append(photoData)
+                    }
+                    
+                    newRecord.photosData = combinedData as Data
+                } catch {
+                    print("照片数据处理失败: \(error)")
+                }
+            }
             
             do {
                 try viewContext.save()
                 
-                // 添加成功动画序列
                 withAnimation(.spring(response: 0.3)) {
                     isCheckingIn = false
                     showCheckInSuccess = true
                 }
                 
-                // 添加成功反馈
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 
-                // 清空表单动画
                 withAnimation(.easeInOut(duration: 0.3).delay(0.5)) {
                     notes = ""
-                    selectedPhotoData = nil
+                    selectedPhotosData.removeAll()
                 }
                 
             } catch {
                 let nsError = error as NSError
-                print("签到保存失败: \(nsError)")
+                print("打卡保存失败: \(nsError)")
                 isCheckingIn = false
                 checkInScale = 1.0
             }
@@ -342,48 +320,6 @@ struct ContentView: View {
 }
 
 // MARK: - 子视图
-
-struct LocationStatusCard: View {
-    @ObservedObject var locationManager: LocationManager
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if locationManager.location == nil {
-                HStack {
-                    Text("正在获取位置...")
-                        .foregroundColor(.secondary)
-                    Button(action: {
-                        locationManager.refreshLocation()
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-            } else if let location = locationManager.location {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("当前位置：")
-                        .font(.headline)
-                    Text("\(location.coordinate.latitude), \(location.coordinate.longitude)")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    if let placemark = locationManager.placemark {
-                        Text(placemark.name ?? "未知位置")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                }
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - 列表和详情视图
 
 struct CheckInRowView: View {
     let record: CheckInRecord
@@ -415,6 +351,7 @@ struct CheckInDetailView: View {
     let record: CheckInRecord
     @State private var showingDeleteAlert = false
     @State private var showingSaveSuccess = false
+    @State private var selectedImageIndex: Int = 0
     
     private var formattedDate: String {
         if let timestamp = record.timestamp {
@@ -425,14 +362,51 @@ struct CheckInDetailView: View {
         return "未知时间"
     }
     
+    private var photos: [Data] {
+        guard let photosData = record.photosData else { return [] }
+        
+        let data = photosData
+        var photos: [Data] = []
+        
+        data.withUnsafeBytes { buffer in
+            guard let baseAddress = buffer.baseAddress else { return }
+            var offset = 0
+            
+            let countPtr = baseAddress.assumingMemoryBound(to: UInt32.self)
+            let count = Int(countPtr.pointee)
+            offset += 4
+            
+            for _ in 0..<count {
+                let lengthPtr = (baseAddress + offset).assumingMemoryBound(to: UInt32.self)
+                let length = Int(lengthPtr.pointee)
+                offset += 4
+                
+                let photoData = data.subdata(in: offset..<(offset + length))
+                photos.append(photoData)
+                offset += length
+            }
+        }
+        
+        return photos
+    }
+    
     var body: some View {
         List {
-            if let photoData = record.photo, let uiImage = UIImage(data: photoData) {
+            if !photos.isEmpty {
                 Section("照片") {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    TabView(selection: $selectedImageIndex) {
+                        ForEach(photos.indices, id: \.self) { index in
+                            if let uiImage = UIImage(data: photos[index]) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .tag(index)
+                            }
+                        }
+                    }
+                    .frame(height: 300)
+                    .tabViewStyle(.page)
+                    .indexViewStyle(.page(backgroundDisplayMode: .always))
                 }
             }
             
@@ -481,7 +455,7 @@ struct CheckInDetailView: View {
                 }
             }
         }
-        .navigationTitle("签到详情")
+        .navigationTitle("打卡详情")
         .listStyle(.insetGrouped)
         .alert("确认删除", isPresented: $showingDeleteAlert) {
             Button("取消", role: .cancel) { }
@@ -489,20 +463,19 @@ struct CheckInDetailView: View {
                 deleteRecord()
             }
         } message: {
-            Text("确定要删除这条签到记录吗？此操作不可撤销。")
+            Text("确定要删除这条打卡记录吗？此操作不可撤销。")
         }
         .alert("保存成功", isPresented: $showingSaveSuccess) {
             Button("确定", role: .cancel) { }
         } message: {
-            Text("签到记录已保存为图片")
+            Text("打卡记录已保存为图片")
         }
     }
     
     private func saveAsImage() {
-        // 创建一个包含所有信息的视图
         let shareView = VStack(spacing: 20) {
             VStack(spacing: 8) {
-                Text("签到记录")
+                Text("打卡记录")
                     .font(.largeTitle)
                     .bold()
                 
@@ -512,43 +485,74 @@ struct CheckInDetailView: View {
             }
             .padding(.bottom)
             
-            if let photoData = record.photo, let uiImage = UIImage(data: photoData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            if !photos.isEmpty {
+                let columns = photos.count == 1 ? 1 :
+                             photos.count == 2 ? 2 :
+                             photos.count <= 4 ? 2 :
+                             3
+                
+                let spacing: CGFloat = 12
+                let availableWidth = UIScreen.main.bounds.width - 40
+                let itemWidth = (availableWidth - (spacing * CGFloat(columns - 1))) / CGFloat(columns)
+                
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.fixed(itemWidth), spacing: spacing), count: columns),
+                    spacing: spacing
+                ) {
+                    ForEach(photos.prefix(9), id: \.self) { photoData in
+                        if let uiImage = UIImage(data: photoData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(
+                                    width: itemWidth,
+                                    height: photos.count == 1 ? itemWidth * 0.75 : itemWidth
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                )
+                        }
+                    }
+                }
+                .padding(.horizontal)
             }
             
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("位置信息")
                         .font(.headline)
+                        .padding(.bottom, 4)
                     
-                    Text("地点：\(record.locationName ?? "未知位置")")
-                    Text("度：\(String(format: "%.6f", record.longitude))")
-                    Text("纬度：\(String(format: "%.6f", record.latitude))")
+                    Group {
+                        Text("地点：\(record.locationName ?? "未知位置")")
+                        Text("经度：\(String(format: "%.6f", record.longitude))")
+                        Text("纬度：\(String(format: "%.6f", record.latitude))")
+                    }
+                    .foregroundColor(.secondary)
                 }
                 
                 if let notes = record.notes, !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("备注")
                             .font(.headline)
+                            .padding(.bottom, 4)
                         Text(notes)
+                            .foregroundColor(.secondary)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
         }
         .padding()
         .background(Color(UIColor.systemBackground))
         
-        // 将视图转换为图片
         let renderer = ImageRenderer(content: shareView)
         renderer.scale = UIScreen.main.scale
         
         if let uiImage = renderer.uiImage {
-            // 保存图片到相册
             UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
             showingSaveSuccess = true
         }
@@ -559,7 +563,6 @@ struct CheckInDetailView: View {
         
         do {
             try viewContext.save()
-            // 删除成功后返回上一页
             dismiss()
         } catch {
             let nsError = error as NSError
@@ -596,7 +599,6 @@ struct ImagePicker: UIViewControllerRepresentable {
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
-                // 压缩图片以节省存储空间
                 if let compressedData = image.jpegData(compressionQuality: 0.5) {
                     parent.selectedImage = compressedData
                 }
@@ -606,6 +608,112 @@ struct ImagePicker: UIViewControllerRepresentable {
         
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.presentationMode.wrappedValue.dismiss()
+        }
+    }
+}
+
+struct PhotoGridView: View {
+    let selectedPhotosData: [Data]
+    let maxPhotos: Int
+    let onDelete: (Int) -> Void
+    let onAdd: () -> Void
+    let onTap: (Int) -> Void
+    let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(selectedPhotosData.indices, id: \.self) { index in
+                if let uiImage = UIImage(data: selectedPhotosData[index]) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3)) {
+                                    onDelete(index)
+                                }
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor(.white)
+                                    .shadow(radius: 2)
+                            }
+                            .padding(4),
+                            alignment: .topTrailing
+                        )
+                        .onTapGesture {
+                            onTap(index)
+                        }
+                }
+            }
+            
+            if selectedPhotosData.count < maxPhotos {
+                Button(action: onAdd) {
+                    VStack {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 30))
+                            .foregroundColor(.secondary)
+                        Text("\(selectedPhotosData.count)/\(maxPhotos)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(height: 100)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct PhotoPreviewView: View {
+    let selectedPhotosData: [Data]
+    @Binding var selectedImageIndex: Int
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            TabView(selection: $selectedImageIndex) {
+                ForEach(selectedPhotosData.indices, id: \.self) { index in
+                    if let uiImage = UIImage(data: selectedPhotosData[index]) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            .tag(index)
+                    }
+                }
+            }
+            .tabViewStyle(.page)
+            
+            VStack {
+                HStack {
+                    Text("\(selectedImageIndex + 1)/\(selectedPhotosData.count)")
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(.black.opacity(0.6))
+                        .clipShape(Capsule())
+                    
+                    Spacer()
+                    
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding()
+                
+                Spacer()
+            }
         }
     }
 }
