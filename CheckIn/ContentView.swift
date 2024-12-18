@@ -29,12 +29,6 @@ struct ContentView: View {
                 ForEach(checkInRecords) { record in
                     NavigationLink {
                         CheckInDetailView(record: record)
-                            .navigationTitle("签到详情")
-                            .toolbar {
-                                Button("在新窗口中打开") {
-                                    openInNewWindow(record: record)
-                                }
-                            }
                     } label: {
                         CheckInRowView(record: record)
                     }
@@ -161,11 +155,6 @@ struct ContentView: View {
                 print("签到保存失败: \(nsError)")
             }
         }
-    }
-    
-    private func openInNewWindow(record: CheckInRecord) {
-        let url = URL(string: "checkin://detail?id=\(record.objectID.uriRepresentation().absoluteString)")!
-        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
 }
 
